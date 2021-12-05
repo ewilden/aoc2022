@@ -12,11 +12,11 @@ pub fn parse(inp: &str) -> Vec<((i32, i32), (i32, i32))> {
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
-fn ambidextrous_range(a: i32, b: i32) -> (RangeInclusive<i32>, bool) {
+fn ambidextrous_range(a: i32, b: i32) -> Vec<i32> {
   if a < b {
-    (a..=b, false)
+    (a..=b).collect()
   } else {
-    (b..=a, true)
+    (b..=a).rev().collect()
   }
 }
 
@@ -24,20 +24,14 @@ pub fn diagram(inp: Vec<((i32, i32), (i32, i32))>) -> HashMap<(i32, i32), i32> {
   let mut counts = HashMap::new();
   for (a, b) in inp.iter() {
     if a.0 == b.0 || a.1 == b.1 {
-      for x in ambidextrous_range(a.0, b.0).0 {
-        for y in ambidextrous_range(a.1, b.1).0 {
+      for x in ambidextrous_range(a.0, b.0) {
+        for y in ambidextrous_range(a.1, b.1) {
           *counts.entry((x,y)).or_insert(0) += 1;
         }
       }
     } else {
-      let (rx, flippedx) = ambidextrous_range(a.0, b.0);
-      let (ry, flippedy) = ambidextrous_range(a.1, b.1);
-      let rx: Vec<i32> = {
-        if flippedx { rx.rev().collect() } else { rx.collect() }
-      };
-      let ry: Vec<i32> = {
-        if flippedy { ry.rev().collect() } else { ry.collect() }
-      };
+      let rx = ambidextrous_range(a.0, b.0);
+      let ry = ambidextrous_range(a.1, b.1);
       for (x, y) in rx.into_iter().zip(ry) {
         *counts.entry((x,y)).or_insert(0) += 1;
       }
