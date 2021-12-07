@@ -41,13 +41,13 @@ pub fn diagram(inp: Vec<((i32, i32), (i32, i32))>) -> HashMap<(i32, i32), i32> {
 }
 
 #[aoc(day5, part1)]
-pub fn part1(inp: &Vec<((i32, i32), (i32, i32))>) -> usize {
-  let counts = diagram(inp.clone().into_iter().filter(|(a,b)| a.0 == b.0 || a.1 == b.1).collect());
+pub fn part1(inp: &[((i32, i32), (i32, i32))]) -> usize {
+  let counts = diagram(inp.iter().filter(|(a,b)| a.0 == b.0 || a.1 == b.1).cloned().collect());
   counts.values().filter(|x| **x >= 2).count()
 }
 
 #[aoc(day5, part2)]
-pub fn part2(inp: &Vec<((i32, i32), (i32, i32))>) -> usize {
-  let counts = diagram(inp.clone());
+pub fn part2(inp: &[((i32, i32), (i32, i32))]) -> usize {
+  let counts = diagram(inp.to_owned());
   counts.values().filter(|x| **x >= 2).count()
 }

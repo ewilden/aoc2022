@@ -1,6 +1,7 @@
 extern crate aoc_runner;
 extern crate anyhow;
 extern crate combine;
+extern crate cached;
 
 #[macro_use]
 extern crate aoc_runner_derive;
@@ -10,4 +11,5 @@ pub mod day02;
 pub mod day03;
 pub mod day04;
 pub mod day05;
+pub mod day06;
 aoc_lib!{ year = 2021 }
