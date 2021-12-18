@@ -5,6 +5,7 @@ extern crate cached;
 // extern crate good_lp;
 extern crate itertools;
 extern crate multimap;
+extern crate single;
 
 #[macro_use]
 extern crate aoc_runner_derive;
