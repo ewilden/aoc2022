@@ -18,19 +18,15 @@ fn is_upper(s: &String) -> bool {
 struct CaveGraph {
   graph: Graph<String, i32, Undirected>,
   name_to_idx: MultiMap<String, NodeIndex>,
-  cave_to_duplicate: Option<String>,
 }
 
 impl CaveGraph {
   fn get_or_create_node(&mut self, name: &String) -> Vec<NodeIndex> {
-    let Self { graph, name_to_idx, cave_to_duplicate } = self;
+    let Self { graph, name_to_idx } = self;
     match name_to_idx.get_vec(name).cloned() {
       Some(idx) => idx,
       None => {
         let mut idxes = vec![graph.add_node(name.clone())];
-        if Some(name) == cave_to_duplicate.as_ref() {
-          idxes.push(graph.add_node(name.clone()));
-        }
         name_to_idx.insert_many(name.to_string(), idxes.clone());
         idxes
       }
@@ -44,7 +40,7 @@ impl CaveGraph {
   }
 }
 
-fn build_graph(inp: &Vec<(String, String)>, cave_to_duplicate: Option<String>) -> CaveGraph {
+fn build_graph(inp: &Vec<(String, String)>) -> CaveGraph {
   let mut big_edges: MultiMap<String, String> = MultiMap::new();
   for (l,r) in inp {
     if is_upper(l) {
@@ -59,7 +55,7 @@ fn build_graph(inp: &Vec<(String, String)>, cave_to_duplicate: Option<String>) -
 
   let graph: Graph<String, i32, Undirected> = Graph::new_undirected();
   let name_to_idx: MultiMap<String, NodeIndex> = MultiMap::new();
-  let mut graph: CaveGraph = CaveGraph { graph, name_to_idx, cave_to_duplicate };
+  let mut graph: CaveGraph = CaveGraph { graph, name_to_idx };
   for (l,r) in inp.iter().filter(|(l,r)| !is_upper(l) && !is_upper(r)).cloned() {
     graph.extend_edge(&l,&r);
   }
@@ -76,8 +72,8 @@ fn build_graph(inp: &Vec<(String, String)>, cave_to_duplicate: Option<String>) -
 
 #[aoc(day12, part1)]
 fn part1(inp: &Vec<(String, String)>) -> usize {
-  let graph = build_graph(inp, None);
-  let CaveGraph { graph, name_to_idx, cave_to_duplicate: _ } = graph;
+  let graph = build_graph(inp);
+  let CaveGraph { graph, name_to_idx} = graph;
   algo::all_simple_paths::<Vec<_>, _>(&graph, 
     *name_to_idx.get(&"start".to_string()).unwrap(), 
     *name_to_idx.get(&"end".to_string()).unwrap(), 
@@ -87,40 +83,60 @@ fn part1(inp: &Vec<(String, String)>) -> usize {
 
 #[aoc(day12, part2)]
 fn part2(inp: &Vec<(String, String)>) -> usize {
-  let (count_no_dup, names) = {
-    let graph = build_graph(inp, None);
-    let CaveGraph { graph, name_to_idx, cave_to_duplicate: _ } = graph;
-    let names = name_to_idx.keys().cloned().collect::<Vec<_>>();
-    (algo::all_simple_paths::<Vec<_>, _>(&graph, 
+  let small_cave_names = inp.iter().cloned().flat_map(|(a,b)| IntoIterator::into_iter([a,b])).filter(
+    |name| name != "start" && name != "end" && !is_upper(name)
+  ).unique().collect::<Vec<_>>();
+
+  let mut count = 0;
+
+  count += {
+    let graph = build_graph(inp);
+    let CaveGraph { graph, name_to_idx } = graph;
+    algo::all_simple_paths::<Vec<_>, _>(&graph, 
       *name_to_idx.get(&"start".to_string()).unwrap(), 
       *name_to_idx.get(&"end".to_string()).unwrap(), 
       0, 
-      None).count(), names)
+      None).count()
   };
-  count_no_dup + names.into_iter().filter(|name| name != "start" && name != "end" && !is_upper(name)).map(|cave_to_duplicate| {
-    let graph = build_graph(inp, Some(cave_to_duplicate));
-    let CaveGraph { graph, name_to_idx, cave_to_duplicate } = graph;
-    let cave_to_duplicate = cave_to_duplicate.unwrap();
-    let dupped_count = algo::all_simple_paths::<Vec<_>, _>(&graph, 
+
+  // let (count_no_dup, names) = {
+  // };
+
+  for cave_to_duplicate in small_cave_names {
+    let dupname = format!("{}duplicate", cave_to_duplicate);
+    let amended_inp = inp.iter().cloned().flat_map(|(a,b)| {
+      if a == cave_to_duplicate {
+        IntoIterator::into_iter(vec![(a,b.clone()), (dupname.clone(),b)])
+      } else if b == cave_to_duplicate {
+        IntoIterator::into_iter(vec![(a.clone(),b), (a,dupname.clone())])
+      } else {
+        IntoIterator::into_iter(vec![(a,b)])
+      }
+    }).collect::<Vec<_>>();
+    let graph = build_graph(&amended_inp);
+    let CaveGraph { graph, name_to_idx } = graph;
+    count += algo::all_simple_paths::<Vec<_>, _>(&graph, 
       *name_to_idx.get(&"start".to_string()).unwrap(), 
       *name_to_idx.get(&"end".to_string()).unwrap(), 
       0, 
       None).filter(|path| {
-        let name_counts = path.iter()
-          .map(|idx| &graph[*idx])
-          .filter(|name| !is_upper(name)).collect::<Counter<_>>();
-        if name_counts[&cave_to_duplicate] != 2 {
+        let name_path = path.into_iter().map(|idx| &graph[*idx]).cloned().collect::<Vec<_>>();
+        let small_name_path = name_path.into_iter().filter(|name| !is_upper(&name)).collect::<Vec<_>>();
+        if small_name_path.len() != small_name_path.iter().unique().count() {
           return false
         }
-        name_counts.into_iter().filter(|(n,c)| n != &&&cave_to_duplicate && c > &&1).count() == 0
+        let namepos = small_name_path.iter().position(|s| s == &cave_to_duplicate);
+        let duppos = small_name_path.iter().position(|s| s == &dupname);
+        match (namepos, duppos) {
+          (None, _) | (_, None) => { return false }
+          (Some(namepos), Some(duppos)) => {
+            if namepos > duppos {
+              return false
+            }
+          }
+        }
+        true
       }).count();
-      // halve the counts (since the route finder will visit duplicate cave in each order but to us it's the same)
-      if dupped_count % 2 != 0 {
-        panic!();
-      }
-      dupped_count / 2
-  }).sum::<usize>()
+  }
+  count
 }
-// guessed 401407, wrong
-// 378004, also wrong
-// 191398, also wrong
