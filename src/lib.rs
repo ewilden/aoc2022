@@ -1,7 +1,9 @@
 extern crate aoc_runner;
 extern crate anyhow;
-extern crate combine;
+extern crate bimap;
 extern crate cached;
+extern crate combine;
+extern crate counter;
 // extern crate good_lp;
 extern crate itertools;
 extern crate multimap;
@@ -21,4 +23,5 @@ pub mod day08;
 pub mod day09;
 pub mod day10;
 pub mod day11;
+pub mod day12;
 aoc_lib!{ year = 2021 }
