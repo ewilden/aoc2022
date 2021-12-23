@@ -7,6 +7,9 @@ extern crate counter;
 // extern crate good_lp;
 extern crate itertools;
 extern crate multimap;
+extern crate num;
+extern crate num_bigint;
+extern crate num_rational;
 extern crate single;
 
 #[macro_use]
@@ -25,4 +28,5 @@ pub mod day10;
 pub mod day11;
 pub mod day12;
 pub mod day13;
+pub mod day14;
 aoc_lib!{ year = 2021 }
