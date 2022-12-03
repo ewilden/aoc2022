@@ -1,5 +1,5 @@
-extern crate aoc_runner;
 extern crate anyhow;
+extern crate aoc_runner;
 extern crate bimap;
 extern crate cached;
 extern crate combine;
@@ -16,4 +16,6 @@ extern crate single;
 extern crate aoc_runner_derive;
 
 pub mod day01;
-aoc_lib!{ year = 2022 }
+pub mod day02;
+pub mod day03;
+aoc_lib! { year = 2022 }
