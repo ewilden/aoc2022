@@ -50,7 +50,7 @@ pub fn part1(input: &[Instruction]) -> i32 {
 
 #[aoc(day10, part2)]
 pub fn part2(input: &[Instruction]) -> i32 {
-    for (cycle_num, position) in input
+    for (index, position) in input
         .iter()
         .flat_map(Instruction::deltas)
         .scan(1, |register, delta| {
@@ -58,17 +58,9 @@ pub fn part2(input: &[Instruction]) -> i32 {
             *register += delta;
             Some(value)
         })
-        // .collect::<Vec<i32>>();
         .enumerate()
-        .map(|(i, register)| (i + 1, register))
     {
-        let horizontal_cursor = cycle_num % 40;
-        let horizontal_cursor = if horizontal_cursor == 0 {
-            40
-        } else {
-            horizontal_cursor
-        };
-        let horizontal_cursor = horizontal_cursor - 1;
+        let horizontal_cursor = index % 40;
 
         if horizontal_cursor == 0 {
             println!();
@@ -80,10 +72,5 @@ pub fn part2(input: &[Instruction]) -> i32 {
         }
     }
 
-    // [20, 60, 100, 140, 180, 220]
-    //     .into_iter()
-    //     .map(|cycle_num| signal_strengths[cycle_num - 1])
-    //     .sum()
-    // RGLRBZAU
     0
 }
