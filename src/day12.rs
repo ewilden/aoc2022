@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use petgraph::{algo::dijkstra, prelude::UnGraph, Directed, Graph, Undirected};
+use petgraph::{algo::dijkstra, Directed, Graph};
 
 #[derive(Clone, Copy)]
 pub enum Spot {
@@ -119,7 +119,6 @@ pub fn part2(input: &Vec<Vec<Spot>>) -> i32 {
             }
         }
     }
-    let start_loc = start_loc.unwrap();
     let end_loc = end_loc.unwrap();
     graph.reverse();
     let graph = graph;
