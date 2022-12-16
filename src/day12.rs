@@ -87,15 +87,12 @@ pub fn part1(input: &Vec<Vec<Spot>>) -> i32 {
 pub fn part2(input: &Vec<Vec<Spot>>) -> i32 {
     let mut nodes = HashMap::new();
     let mut graph: Graph<Spot, (), Directed> = Graph::new();
-    let mut start_loc = None;
     let mut end_loc = None;
     for r in 0..input.len() {
         for c in 0..input[0].len() {
             let me_spot = input[r][c];
             match me_spot {
-                Spot::Start => {
-                    start_loc = Some((r, c));
-                }
+                Spot::Start => {}
                 Spot::End => {
                     end_loc = Some((r, c));
                 }

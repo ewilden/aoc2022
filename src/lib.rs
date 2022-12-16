@@ -6,6 +6,7 @@ extern crate combine;
 extern crate counter;
 // extern crate good_lp;
 extern crate itertools;
+extern crate kdtree;
 extern crate multimap;
 // extern crate nom;
 extern crate num;
@@ -29,4 +30,7 @@ pub mod day09;
 pub mod day10;
 pub mod day11;
 pub mod day12;
+pub mod day13;
+pub mod day14;
+pub mod day15;
 aoc_lib! { year = 2022 }

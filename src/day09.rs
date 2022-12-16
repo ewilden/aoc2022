@@ -1,7 +1,5 @@
 use std::{collections::HashSet, str::FromStr};
 
-use itertools::Itertools;
-
 #[derive(Clone, Copy)]
 pub enum Dir {
     U,

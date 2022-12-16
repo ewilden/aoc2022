@@ -1,7 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use itertools::Itertools;
-
 #[aoc_generator(day8)]
 pub fn parse(input: &str) -> Vec<Vec<((usize, usize), i32)>> {
     let without_indices: Vec<Vec<i32>> = input
@@ -27,7 +25,7 @@ pub fn parse(input: &str) -> Vec<Vec<((usize, usize), i32)>> {
 fn rotate<T: Clone + Copy>(input: Vec<Vec<T>>) -> Vec<Vec<T>> {
     let mut out = Vec::from_iter(std::iter::repeat(Vec::new()).take(input[0].len()));
     for col in 0..input[0].len() {
-        for row in (0..input.len()) {
+        for row in 0..input.len() {
             out[col].push(input[input.len() - row - 1][col]);
         }
     }
