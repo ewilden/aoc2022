@@ -174,7 +174,7 @@ pub fn part1(input: &[(String, i32, Vec<String>)]) -> f64 {
 }
 
 #[aoc(day16, part2)]
-pub fn part2(input: &[(String, i32, Vec<String>)]) -> f64 {
+pub fn part2(input: &[(String, i32, Vec<String>)]) -> i32 {
     const DO_EXAMPLE: bool = false;
     if DO_EXAMPLE {
         return part2_impl(&parse(
@@ -193,7 +193,7 @@ Valve JJ has flow rate=21; tunnel leads to valve II",
     part2_impl(input)
 }
 
-pub fn part2_impl(input: &[(String, i32, Vec<String>)]) -> f64 {
+pub fn part2_impl(input: &[(String, i32, Vec<String>)]) -> i32 {
     let mut graph: Graph<String, i32, Directed> = Graph::new();
     let mut name_to_node: HashMap<String, NodeIndex<DefaultIx>> = HashMap::new();
     let mut name_to_flow_rate: HashMap<String, i32> = HashMap::new();
@@ -220,7 +220,7 @@ pub fn part2_impl(input: &[(String, i32, Vec<String>)]) -> f64 {
     let mut pared_graph: Graph<String, (String, i32), Directed> = Graph::new();
 
     for ((a_ind, b_ind), dist) in from_to_dists {
-        if dist < 26 {
+        if dist < 30 {
             let a_name = graph.node_weight(a_ind).unwrap();
             let b_name = graph.node_weight(b_ind).unwrap();
             if !(name_to_flow_rate.contains_key(a_name) || a_name == "AA")
@@ -240,178 +240,91 @@ pub fn part2_impl(input: &[(String, i32, Vec<String>)]) -> f64 {
                 b_pared,
                 (b_name.to_owned(), dist /* FOR OPENING */ + 1),
             );
-            // if a_name < b_name {
-            // println!(
-            //     "{a_name}_{} -> {b_name}_{} [dir=none]",
-            //     name_to_flow_rate.get(a_name).unwrap_or(&0),
-            //     name_to_flow_rate.get(b_name).unwrap_or(&0)
-            // );
-            // }
         }
     }
     let graph = pared_graph;
     let name_to_node = pared_name_to_node;
 
-    let mut name_time_to_node_index: HashMap<
-        (((String, i32), (String, i32)), i32, BTreeSet<String>),
-        NodeIndex<DefaultIx>,
-    > = HashMap::new();
-    let start_node = (
-        ((String::from("AA"), 0), (String::from("AA"), 0)),
-        0,
-        BTreeSet::new(),
-    );
-    let mut nodes_just_added = vec![start_node.clone()];
-    let mut time_graph: Graph<
-        (((String, i32), (String, i32)), i32, BTreeSet<String>),
-        f64,
-        Directed,
-    > = Graph::with_capacity(16 * 30, 16 * 30);
-    let start_index = *name_time_to_node_index
-        .entry(start_node.clone())
-        .or_insert_with(|| time_graph.add_node(start_node.clone()));
+    let mut solver = Solver {
+        graph,
+        name_to_node,
+        name_to_flow_rate,
+        cache: HashMap::new(),
+    };
+    let _result = solver.best_path(("AA".to_owned(), 26, BTreeSet::new()), 0);
 
-    let end_index = time_graph.add_node((
-        (("END".to_owned(), 0), ("END".to_owned(), 0)),
-        26,
-        BTreeSet::new(),
-    ));
-
-    loop {
-        println!("Graph has {} nodes", time_graph.node_count());
-        if nodes_just_added.is_empty() {
-            // We're done building the graph.
-            break;
-        }
-
-        for node in std::mem::replace(&mut nodes_just_added, Vec::new()).into_iter() {
-            let node_index = name_time_to_node_index[&node];
-            let (((me, me_travel_minutes), (elephant, elephant_travel_minutes)), time, visited) =
-                &node;
-            assert!(me == "AA" || me != elephant);
-            assert!(*time <= 26);
-            if *time == 26 {
-                // force going to end.
-                time_graph.add_edge(node_index, end_index, 0.0);
-                continue;
+    let nodes_to_score = solver.cache.into_iter().collect::<Vec<_>>();
+    let (score, a, b) = nodes_to_score
+        .clone()
+        .into_iter()
+        .cartesian_product(nodes_to_score.into_iter())
+        .filter_map(|((a_set, a_score), (b_set, b_score))| {
+            if !a_set.is_disjoint(&b_set) {
+                return None;
             }
-            let visited = {
+            Some(((a_score + b_score), a_set, b_set))
+        })
+        .max()
+        .unwrap();
+    println!("{a:?}\n{b:?}");
+    score
+}
+
+pub struct Solver {
+    pub graph: Graph<String, (String, i32)>,
+    pub name_to_node: HashMap<String, NodeIndex<DefaultIx>>,
+    pub name_to_flow_rate: HashMap<String, i32>,
+    pub cache: HashMap<BTreeSet<String>, i32>,
+}
+
+impl Solver {
+    pub fn best_path(&mut self, state: (String, i32, BTreeSet<String>), score_so_far: i32) -> i32 {
+        let (curr, time_left, visited) = state;
+        assert!(!visited.contains(&curr));
+        let visited = {
+            let mut visited = visited;
+            visited.insert(curr.clone());
+            visited
+        };
+
+        let cached_best = self
+            .cache
+            .entry({
                 let mut visited = visited.clone();
-                visited.insert(me.clone());
-                visited.insert(elephant.clone());
-                visited.remove("END");
+                visited.remove("AA");
                 visited
-            };
-            let me_edges = {
-                if me == "END" {
-                    vec![("END".to_owned(), 26 - *time - 1)]
-                } else if *me_travel_minutes > 0 {
-                    vec![
-                        (me.clone(), *me_travel_minutes - 1),
-                        ("END".to_owned(), 26 - *time - 1),
-                    ]
-                } else {
-                    graph
-                        .edges(name_to_node[me])
-                        .filter_map(|me_edge| {
-                            let (me_dest, me_dist) = me_edge.weight();
-                            if visited.contains(me_dest) {
-                                return None;
-                            }
-                            Some((me_dest.clone(), *me_dist - 1))
-                        })
-                        .chain(std::iter::once(("END".to_owned(), 26 - *time - 1)))
-                        .collect::<Vec<_>>()
-                }
-            };
-            let elephant_edges = {
-                if elephant == "END" {
-                    vec![("END".to_owned(), 26 - *time - 1)]
-                } else if *elephant_travel_minutes > 0 {
-                    vec![
-                        (elephant.clone(), *elephant_travel_minutes - 1),
-                        ("END".to_owned(), 26 - *time - 1),
-                    ]
-                } else {
-                    graph
-                        .edges(name_to_node[elephant])
-                        .filter_map(|elephant_edge| {
-                            let (elephant_dest, elephant_dist) = elephant_edge.weight();
-                            if visited.contains(elephant_dest) {
-                                return None;
-                            }
-                            Some((elephant_dest.clone(), *elephant_dist - 1))
-                        })
-                        .chain(std::iter::once(("END".to_owned(), 26 - *time - 1)))
-                        .collect::<Vec<_>>()
-                }
-            };
-            for (me_with_travel, elephant_with_travel) in me_edges
-                .into_iter()
-                .cartesian_product(elephant_edges.into_iter())
-                .map(|(me_with_travel, elephant_with_travel)| {
-                    let mut nexts = [me_with_travel, elephant_with_travel].into_iter().sorted();
-                    (nexts.next().unwrap(), nexts.next().unwrap())
-                })
-                .unique()
-            {
-                let common_time = me_with_travel.1.min(elephant_with_travel.1);
-                assert!(common_time >= 0);
+            })
+            .or_insert(score_so_far);
+        if score_so_far > *cached_best {
+            *cached_best = score_so_far;
+        }
 
-                let next_time = *time + 1 + common_time;
-                if next_time > 26 {
-                    continue;
-                }
+        assert!(time_left >= 0);
+        if time_left == 0 {
+            return 0;
+        }
 
-                let me_with_travel = (me_with_travel.0, me_with_travel.1 - common_time);
-                let elephant_with_travel =
-                    (elephant_with_travel.0, elephant_with_travel.1 - common_time);
-
-                if me_with_travel.0 == elephant_with_travel.0 {
-                    if me_with_travel.0 == "END" {
-                        time_graph.add_edge(node_index, end_index, 0.0);
-                    }
-                    continue;
-                }
-                // We haven't visited this yet, and we can get to it in time, so let's add it to the graph.
-                let dest_node = (
-                    (me_with_travel.clone(), elephant_with_travel.clone()),
-                    next_time,
-                    {
-                        let mut visited = visited.clone();
-                        visited.insert(me_with_travel.0.clone());
-                        visited.insert(elephant_with_travel.0.clone());
-                        visited.remove("END");
-                        visited
-                    },
-                );
-                let dest_index = *name_time_to_node_index
-                    .entry(dest_node.clone())
-                    .or_insert_with(|| {
-                        nodes_just_added.push(dest_node.clone());
-                        time_graph.add_node(dest_node.clone())
-                    });
-
-                let new_flow = {
-                    let mut new_flow = 0;
-                    if me_with_travel.1 == 0 && me_with_travel.0 != "END" {
-                        new_flow += name_to_flow_rate[&me_with_travel.0];
-                    }
-                    if elephant_with_travel.1 == 0 && elephant_with_travel.0 != "END" {
-                        new_flow += name_to_flow_rate[&elephant_with_travel.0];
-                    }
-                    new_flow
-                };
-
-                time_graph.add_edge(
-                    node_index,
-                    dest_index,
-                    f64::from(-(26 - next_time) * new_flow),
-                );
+        let mut best = score_so_far;
+        for (dest, dist) in self
+            .graph
+            .edges(self.name_to_node[&curr])
+            .map(|edge| {
+                let (dest, dist) = edge.weight();
+                (dest.clone(), *dist)
+            })
+            .filter(|(dest, dist)| !visited.contains(dest) && *dist <= time_left)
+            .collect::<Vec<_>>()
+            .into_iter()
+        {
+            let time_left = time_left - dist;
+            let subscore = self.best_path(
+                (dest.clone(), time_left, visited.clone()),
+                score_so_far + time_left * self.name_to_flow_rate[&dest],
+            );
+            if subscore > best {
+                best = subscore;
             }
         }
+        best
     }
-
-    let paths = bellman_ford(&time_graph, start_index).unwrap();
-    paths.distances[end_index.index()]
 }
