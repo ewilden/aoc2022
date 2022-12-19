@@ -1,6 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use petgraph::{data::Build, stable_graph::NodeIndex, unionfind::UnionFind, Graph, Undirected};
+use petgraph::unionfind::UnionFind;
 
 #[aoc_generator(day18)]
 pub fn parse(input: &str) -> Vec<(i32, i32, i32)> {
@@ -57,7 +57,7 @@ pub fn part2(input: &[(i32, i32, i32)]) -> usize {
     let max_y = grid.iter().map(|point| point.1).max().unwrap();
     let max_z = grid.iter().map(|point| point.2).max().unwrap();
 
-    let mut union_find = UnionFind::new(unionize_point((25, 25, 25)));
+    let mut union_find = UnionFind::new(unionize_point((max_x + 2, max_y + 2, max_z + 2)));
     for x in (-1)..=(max_x + 1) {
         for y in (-1)..=(max_y + 1) {
             for z in (-1)..=(max_z + 1) {
