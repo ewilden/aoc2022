@@ -300,7 +300,6 @@ const MAX_ROCKS: i64 = 1000000000000;
 #[aoc(day17, part2)]
 pub fn part2(input: &[Jet]) -> i64 {
     let mut num_rocks_placed: i64 = 0;
-    let mut artificial_num_rocks_placed: i64 = 0;
     let mut tower = Tower::new();
     let mut jet_i = 0;
     let mut cache: HashMap<CacheKey, CacheVal> = HashMap::new();
