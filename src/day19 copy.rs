@@ -1,7 +1,9 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     ops::{Add, AddAssign, Mul, Neg},
 };
+
+use itertools::{Either, Itertools};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Ore(i32);
@@ -106,7 +108,6 @@ pub fn parse(input: &str) -> Vec<Blueprint> {
     input
         .lines()
         .map(|line| {
-            let line = line.trim();
             let (_, line) = line.split_once("Each ore robot costs ").unwrap();
             let (ore, line) = line.split_once(" ore. Each clay robot costs ").unwrap();
             let (clay, line) = line.split_once(" ore. Each obsidian robot costs ").unwrap();
@@ -236,38 +237,113 @@ impl Resources {
             })
     }
 
-    fn options(self, blueprint: Blueprint) -> impl Iterator<Item = Robots> {
-        std::iter::once(Robots::default()).chain(
-            [
-                Robots {
-                    ore_robots: 1,
-                    clay_robots: 0,
-                    obsidian_robots: 0,
-                    geode_robots: 0,
+    fn options(
+        self,
+        blueprint: Blueprint,
+        ore: impl Iterator<Item = i32>,
+        clay: impl Iterator<Item = i32>,
+        obsidian: impl Iterator<Item = i32>,
+        geode: impl Iterator<Item = i32>,
+    ) -> impl Iterator<Item = Robots> {
+        let max_ore = (0..)
+            .take_while(|&ore_robots| {
+                self.spend(
+                    blueprint,
+                    Robots {
+                        ore_robots,
+                        ..Default::default()
+                    },
+                )
+                .is_some()
+            })
+            .last()
+            .unwrap();
+        let max_clay = (0..)
+            .take_while(|&clay_robots| {
+                self.spend(
+                    blueprint,
+                    Robots {
+                        clay_robots,
+                        ..Default::default()
+                    },
+                )
+                .is_some()
+            })
+            .last()
+            .unwrap();
+        let max_obsidian = (0..)
+            .take_while(|&obsidian_robots| {
+                self.spend(
+                    blueprint,
+                    Robots {
+                        obsidian_robots,
+                        ..Default::default()
+                    },
+                )
+                .is_some()
+            })
+            .last()
+            .unwrap();
+        let max_geode = (0..)
+            .take_while(|&geode_robots| {
+                self.spend(
+                    blueprint,
+                    Robots {
+                        geode_robots,
+                        ..Default::default()
+                    },
+                )
+                .is_some()
+            })
+            .last()
+            .unwrap();
+        // println!("{max_ore}, {max_clay}, {max_obsidian}, {max_geode}");
+        (ore.take_while(move |x| x <= &max_ore))
+            .cartesian_product(clay.take_while(|&x| x <= max_clay).collect_vec())
+            .cartesian_product(obsidian.take_while(|&x| x <= max_obsidian).collect_vec())
+            .cartesian_product(geode.take_while(|&x| x <= max_geode).collect_vec())
+            .filter_map(
+                move |(((ore_robots, clay_robots), obsidian_robots), geode_robots)| {
+                    let robots = Robots {
+                        ore_robots,
+                        clay_robots,
+                        obsidian_robots,
+                        geode_robots,
+                    };
+                    let _resources = self.spend(blueprint, robots)?;
+                    // [
+                    //     Robots {
+                    //         ore_robots: 1,
+                    //         ..Default::default()
+                    //     },
+                    //     Robots {
+                    //         clay_robots: 1,
+                    //         ..Default::default()
+                    //     },
+                    //     Robots {
+                    //         obsidian_robots: 1,
+                    //         ..Default::default()
+                    //     },
+                    //     Robots {
+                    //         geode_robots: 1,
+                    //         ..Default::default()
+                    //     },
+                    // ]
+                    // .into_iter()
+                    // .all(move |robots| resources.spend(blueprint, robots).is_none())
+                    // .then_some(robots)
+                    Some(robots)
                 },
-                Robots {
-                    ore_robots: 0,
-                    clay_robots: 1,
-                    obsidian_robots: 0,
-                    geode_robots: 0,
-                },
-                Robots {
-                    ore_robots: 0,
-                    clay_robots: 0,
-                    obsidian_robots: 1,
-                    geode_robots: 0,
-                },
-                Robots {
-                    ore_robots: 0,
-                    clay_robots: 0,
-                    obsidian_robots: 0,
-                    geode_robots: 1,
-                },
-            ]
-            .into_iter()
-            .filter(move |&robots| self.spend(blueprint, robots).is_some()),
-        )
+            )
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum RobotType {
+    Ore,
+    Clay,
+    Obsidian,
+    Geode,
 }
 
 #[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -275,8 +351,8 @@ struct State {
     minutes_left: i32,
     resources: Resources,
     robots: Robots,
-    first_minute: Robots,
-    last_minute: Robots,
+    geodes: i32,
+    previously_made: BTreeSet<RobotType>,
 }
 
 struct Solver19 {
@@ -288,11 +364,10 @@ impl Solver19 {
     fn solve(&mut self, state: State) -> i32 {
         if !self.cache.contains_key(&state) {
             let result = self.solve_impl(state.clone());
-            // self.cache.insert(state, result);
+            self.cache.insert(state, result);
             return result;
         }
         self.cache[&state]
-        // self.solve_impl(state)
     }
 
     fn solve_impl(&mut self, state: State) -> i32 {
@@ -300,56 +375,90 @@ impl Solver19 {
             minutes_left,
             robots,
             resources,
-            first_minute,
-            last_minute,
+            geodes,
+            previously_made,
         } = state.clone();
         if minutes_left == 0 {
-            return 0;
+            return geodes;
         }
 
-        let robot_options = resources.options(self.blueprint);
+        let robot_options = resources.options(
+            self.blueprint,
+            {
+                if !previously_made.is_disjoint(&BTreeSet::from_iter([
+                    RobotType::Clay,
+                    RobotType::Obsidian,
+                    RobotType::Geode,
+                ])) {
+                    Either::Left(0..=0)
+                } else {
+                    Either::Right(0..)
+                }
+            },
+            {
+                if !previously_made.is_disjoint(&BTreeSet::from_iter([
+                    RobotType::Obsidian,
+                    RobotType::Geode,
+                ])) {
+                    Either::Left(0..=0)
+                } else {
+                    Either::Right(0..)
+                }
+            },
+            {
+                if !previously_made.is_disjoint(&BTreeSet::from_iter([RobotType::Geode])) {
+                    Either::Left(0..=0)
+                } else {
+                    Either::Right(0..)
+                }
+            },
+            0..,
+        );
         let (mined_resources, new_geodes) = robots.mine();
 
-        let mut best = 0;
+        if new_geodes > 0 {
+            println!("made {new_geodes} geodes!!!!!!!!");
+        }
+
+        if minutes_left == 1 {
+            return new_geodes + geodes;
+        }
+
+        let mut best = geodes + new_geodes;
         for option in robot_options {
-            if option.ore_robots > 0
-                && !(last_minute.ore_robots..=first_minute.ore_robots).contains(&minutes_left)
-            {
-                continue;
-            }
-            if option.clay_robots > 0
-                && !(last_minute.clay_robots..=first_minute.clay_robots).contains(&minutes_left)
-            {
-                continue;
-            }
-            if option.obsidian_robots > 0
-                && !(last_minute.obsidian_robots..=first_minute.obsidian_robots)
-                    .contains(&minutes_left)
-            {
-                continue;
-            }
-            if option.geode_robots > 0
-                && !(last_minute.geode_robots..=first_minute.geode_robots).contains(&minutes_left)
-            {
-                continue;
-            }
+            let previously_made = {
+                let mut previously_made = previously_made.clone();
+                if option.ore_robots > 0 {
+                    previously_made.insert(RobotType::Ore);
+                }
+                if option.clay_robots > 0 {
+                    previously_made.insert(RobotType::Clay);
+                }
+                if option.obsidian_robots > 0 {
+                    previously_made.insert(RobotType::Obsidian);
+                }
+                if option.geode_robots > 0 {
+                    previously_made.insert(RobotType::Geode);
+                }
+                previously_made
+            };
             best = best.max(self.solve(State {
                 minutes_left: minutes_left - 1,
                 resources: resources.spend(self.blueprint, option).unwrap() + mined_resources,
                 robots: robots + option,
-                first_minute,
-                last_minute,
+                geodes: geodes + new_geodes,
+                previously_made,
             }))
         }
 
-        best + new_geodes
+        best
     }
 }
 
 #[aoc(day19, part1)]
 pub fn part1(input: &[Blueprint]) -> i32 {
-    //     let input = &parse("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
-    // Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian.");
+    let input = &parse("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
+Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian.");
     input
         .iter()
         .enumerate()
@@ -358,59 +467,28 @@ pub fn part1(input: &[Blueprint]) -> i32 {
                 blueprint,
                 cache: HashMap::new(),
             };
-            let mut best = 0;
-            for first_ore in 1..=24 {
-                for first_clay in 3..24 {
-                    for first_obsidian in 2..first_clay {
-                        for first_geode in 1..first_obsidian {
-                            for last_ore in 1..=first_ore {
-                                for last_clay in 3..=first_clay {
-                                    for last_obsidian in 2..=first_obsidian {
-                                        for last_geode in 1..=first_geode {
-                                            let first_minute = Robots {
-                                                ore_robots: first_ore,
-                                                clay_robots: first_clay,
-                                                obsidian_robots: first_obsidian,
-                                                geode_robots: first_geode,
-                                            };
-                                            let last_minute = Robots {
-                                                ore_robots: last_ore,
-                                                clay_robots: last_clay,
-                                                obsidian_robots: last_obsidian,
-                                                geode_robots: last_geode,
-                                            };
-                                            let sol = solver.solve(State {
-                                                minutes_left: 24,
-                                                resources: Resources {
-                                                    ore: Ore(0),
-                                                    clay: Clay(0),
-                                                    obsidian: Obsidian(0),
-                                                },
-                                                robots: Robots {
-                                                    ore_robots: 1,
-                                                    clay_robots: 0,
-                                                    obsidian_robots: 0,
-                                                    geode_robots: 0,
-                                                },
-                                                first_minute,
-                                                last_minute,
-                                            });
-                                            best = best.max(sol);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
+            let sol = solver.solve(State {
+                minutes_left: 10,
+                resources: Resources {
+                    ore: Ore(0),
+                    clay: Clay(0),
+                    obsidian: Obsidian(0),
+                },
+                robots: Robots {
+                    ore_robots: 1,
+                    clay_robots: 0,
+                    obsidian_robots: 0,
+                    geode_robots: 0,
+                },
+                geodes: 0,
+                previously_made: BTreeSet::new(),
+            });
             let i = i + 1;
             println!(
-                "solved blueprint {i} with score {best} and state size {}",
+                "solved blueprint {i} with score {sol} and state size {}",
                 solver.cache.len()
             );
-            i32::try_from(i).unwrap() * best
+            i32::try_from(i).unwrap() * sol
         })
         .sum()
 }
