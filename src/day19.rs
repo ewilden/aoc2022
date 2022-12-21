@@ -1,7 +1,9 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     ops::{Add, AddAssign, Mul, Neg},
 };
+
+use itertools::Itertools;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct Ore(i32);
@@ -236,37 +238,46 @@ impl Resources {
             })
     }
 
-    fn options(self, blueprint: Blueprint) -> impl Iterator<Item = Robots> {
-        std::iter::once(Robots::default()).chain(
-            [
-                Robots {
-                    ore_robots: 1,
-                    clay_robots: 0,
-                    obsidian_robots: 0,
-                    geode_robots: 0,
-                },
-                Robots {
-                    ore_robots: 0,
-                    clay_robots: 1,
-                    obsidian_robots: 0,
-                    geode_robots: 0,
-                },
-                Robots {
-                    ore_robots: 0,
-                    clay_robots: 0,
-                    obsidian_robots: 1,
-                    geode_robots: 0,
-                },
-                Robots {
-                    ore_robots: 0,
-                    clay_robots: 0,
-                    obsidian_robots: 0,
-                    geode_robots: 1,
-                },
-            ]
-            .into_iter()
-            .filter(move |&robots| self.spend(blueprint, robots).is_some()),
-        )
+    fn options(self, blueprint: Blueprint) -> impl Iterator<Item = RobotType> {
+        [
+            RobotType::Ore,
+            RobotType::Clay,
+            RobotType::Obsidian,
+            RobotType::Geode,
+        ]
+        .into_iter()
+        .filter(move |&t| self.spend(blueprint, t.into()).is_some())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum RobotType {
+    Ore,
+    Clay,
+    Obsidian,
+    Geode,
+}
+
+impl From<RobotType> for Robots {
+    fn from(t: RobotType) -> Self {
+        match t {
+            RobotType::Ore => Robots {
+                ore_robots: 1,
+                ..Default::default()
+            },
+            RobotType::Clay => Robots {
+                clay_robots: 1,
+                ..Default::default()
+            },
+            RobotType::Obsidian => Robots {
+                obsidian_robots: 1,
+                ..Default::default()
+            },
+            RobotType::Geode => Robots {
+                geode_robots: 1,
+                ..Default::default()
+            },
+        }
     }
 }
 
@@ -275,8 +286,7 @@ struct State {
     minutes_left: i32,
     resources: Resources,
     robots: Robots,
-    first_minute: Robots,
-    last_minute: Robots,
+    not_allowed_next: BTreeSet<RobotType>,
 }
 
 struct Solver19 {
@@ -288,7 +298,9 @@ impl Solver19 {
     fn solve(&mut self, state: State) -> i32 {
         if !self.cache.contains_key(&state) {
             let result = self.solve_impl(state.clone());
-            // self.cache.insert(state, result);
+            if state.minutes_left < 6 && state.minutes_left > 0 {
+                self.cache.insert(state, result);
+            }
             return result;
         }
         self.cache[&state]
@@ -300,46 +312,58 @@ impl Solver19 {
             minutes_left,
             robots,
             resources,
-            first_minute,
-            last_minute,
+            not_allowed_next,
         } = state.clone();
         if minutes_left == 0 {
             return 0;
         }
 
-        let robot_options = resources.options(self.blueprint);
+        let robot_options = resources
+            .options(self.blueprint)
+            .filter(|&ty| match ty {
+                RobotType::Ore => {
+                    Ore(robots.ore_robots)
+                        < self
+                            .blueprint
+                            .clay_robot_cost
+                            .max(self.blueprint.obsidian_robot_cost.0)
+                            .max(self.blueprint.geode_robot_cost.0)
+                }
+                RobotType::Clay => Clay(robots.clay_robots) < self.blueprint.obsidian_robot_cost.1,
+                RobotType::Obsidian => {
+                    Obsidian(robots.obsidian_robots) < self.blueprint.geode_robot_cost.1
+                }
+                RobotType::Geode => true,
+            })
+            .collect_vec();
         let (mined_resources, new_geodes) = robots.mine();
 
         let mut best = 0;
-        for option in robot_options {
-            if option.ore_robots > 0
-                && !(last_minute.ore_robots..=first_minute.ore_robots).contains(&minutes_left)
-            {
-                continue;
+        for option in std::iter::once(None).chain(robot_options.iter().map(Some)) {
+            let option = option.copied();
+            if let Some(option) = option {
+                if not_allowed_next.contains(&option) {
+                    continue;
+                }
             }
-            if option.clay_robots > 0
-                && !(last_minute.clay_robots..=first_minute.clay_robots).contains(&minutes_left)
-            {
-                continue;
-            }
-            if option.obsidian_robots > 0
-                && !(last_minute.obsidian_robots..=first_minute.obsidian_robots)
-                    .contains(&minutes_left)
-            {
-                continue;
-            }
-            if option.geode_robots > 0
-                && !(last_minute.geode_robots..=first_minute.geode_robots).contains(&minutes_left)
-            {
-                continue;
-            }
-            best = best.max(self.solve(State {
-                minutes_left: minutes_left - 1,
-                resources: resources.spend(self.blueprint, option).unwrap() + mined_resources,
-                robots: robots + option,
-                first_minute,
-                last_minute,
-            }))
+
+            best = best.max(
+                self.solve(State {
+                    minutes_left: minutes_left - 1,
+                    resources: resources
+                        .spend(self.blueprint, option.map(Robots::from).unwrap_or_default())
+                        .unwrap()
+                        + mined_resources,
+                    robots: robots + option.map(Robots::from).unwrap_or_default(),
+                    not_allowed_next: {
+                        if let Some(_option) = option {
+                            BTreeSet::new()
+                        } else {
+                            robot_options.iter().copied().collect()
+                        }
+                    },
+                }),
+            )
         }
 
         best + new_geodes
@@ -348,7 +372,7 @@ impl Solver19 {
 
 #[aoc(day19, part1)]
 pub fn part1(input: &[Blueprint]) -> i32 {
-    //     let input = &parse("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
+    // let input = &parse("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
     // Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian.");
     input
         .iter()
@@ -358,59 +382,65 @@ pub fn part1(input: &[Blueprint]) -> i32 {
                 blueprint,
                 cache: HashMap::new(),
             };
-            let mut best = 0;
-            for first_ore in 1..=24 {
-                for first_clay in 3..24 {
-                    for first_obsidian in 2..first_clay {
-                        for first_geode in 1..first_obsidian {
-                            for last_ore in 1..=first_ore {
-                                for last_clay in 3..=first_clay {
-                                    for last_obsidian in 2..=first_obsidian {
-                                        for last_geode in 1..=first_geode {
-                                            let first_minute = Robots {
-                                                ore_robots: first_ore,
-                                                clay_robots: first_clay,
-                                                obsidian_robots: first_obsidian,
-                                                geode_robots: first_geode,
-                                            };
-                                            let last_minute = Robots {
-                                                ore_robots: last_ore,
-                                                clay_robots: last_clay,
-                                                obsidian_robots: last_obsidian,
-                                                geode_robots: last_geode,
-                                            };
-                                            let sol = solver.solve(State {
-                                                minutes_left: 24,
-                                                resources: Resources {
-                                                    ore: Ore(0),
-                                                    clay: Clay(0),
-                                                    obsidian: Obsidian(0),
-                                                },
-                                                robots: Robots {
-                                                    ore_robots: 1,
-                                                    clay_robots: 0,
-                                                    obsidian_robots: 0,
-                                                    geode_robots: 0,
-                                                },
-                                                first_minute,
-                                                last_minute,
-                                            });
-                                            best = best.max(sol);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let sol = solver.solve(State {
+                minutes_left: 24,
+                resources: Resources {
+                    ore: Ore(0),
+                    clay: Clay(0),
+                    obsidian: Obsidian(0),
+                },
+                robots: Robots {
+                    ore_robots: 1,
+                    clay_robots: 0,
+                    obsidian_robots: 0,
+                    geode_robots: 0,
+                },
+                not_allowed_next: BTreeSet::new(),
+            });
 
             let i = i + 1;
             println!(
-                "solved blueprint {i} with score {best} and state size {}",
+                "solved blueprint {i} with score {sol} and state size {}",
                 solver.cache.len()
             );
-            i32::try_from(i).unwrap() * best
+            i32::try_from(i).unwrap() * sol
         })
         .sum()
+}
+
+#[aoc(day19, part2)]
+pub fn part2(input: &[Blueprint]) -> i32 {
+    // let input = &parse("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.
+    // Blueprint 2: Each ore robot costs 2 ore. Each clay robot costs 3 ore. Each obsidian robot costs 3 ore and 8 clay. Each geode robot costs 3 ore and 12 obsidian.");
+    input
+        .iter()
+        .take(3)
+        .map(|&blueprint| {
+            let mut solver = Solver19 {
+                blueprint,
+                cache: HashMap::new(),
+            };
+            let sol = solver.solve(State {
+                minutes_left: 32,
+                resources: Resources {
+                    ore: Ore(0),
+                    clay: Clay(0),
+                    obsidian: Obsidian(0),
+                },
+                robots: Robots {
+                    ore_robots: 1,
+                    clay_robots: 0,
+                    obsidian_robots: 0,
+                    geode_robots: 0,
+                },
+                not_allowed_next: BTreeSet::new(),
+            });
+
+            println!(
+                "solved blueprint with score {sol} and state size {}",
+                solver.cache.len()
+            );
+            sol
+        })
+        .product()
 }
